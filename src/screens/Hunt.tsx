@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   PermissionsAndroid,
   Platform,
-  Dimensions,
+  Vibration,
 } from "react-native";
 import MapView, {
   Marker,
@@ -16,7 +16,9 @@ import MapView, {
   UserLocationChangeEvent,
   PROVIDER_GOOGLE
 } from "react-native-maps";
-import Icon from 'react-native-vector-icons/Feather'; // Assuming you use vector icons
+import Icon from 'react-native-vector-icons/Feather';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 
 // --- Types ---
 type Biome = "urban" | "rural" | "water";
@@ -45,20 +47,19 @@ const BIOME_POKEMON: Record<Biome, string[]> = {
 const DEFAULT_REGION: Region = {
   latitude: 10.3521,
   longitude: 123.9125,
-  latitudeDelta: 0.01, // Zoom level (smaller number = closer zoom)
-  longitudeDelta: 0.01,
+  latitudeDelta: 0.005, 
+  longitudeDelta: 0.005,
 };
 
 function getBiomeFromCoords(lat: number, lon: number): Biome {
-  // Simple simulation logic
   if (Math.abs(lat % 0.002) < 0.0005) return "water";
   if (Math.floor(Math.abs(lon * 100)) % 2 === 0) return "urban";
   return "rural";
 }
 
 function getRandomNearbyOffset() {
-  const maxOffset = 0.002; // Roughly 200m
-  const minOffset = 0.0005;
+  const maxOffset = 0.0015; // ~150m radius
+  const minOffset = 0.0002;
   const offsetLat = (Math.random() * (maxOffset - minOffset) + minOffset) * (Math.random() > 0.5 ? 1 : -1);
   const offsetLon = (Math.random() * (maxOffset - minOffset) + minOffset) * (Math.random() > 0.5 ? 1 : -1);
   return { offsetLat, offsetLon };
@@ -95,7 +96,13 @@ const HuntScreen: React.FC = () => {
   const [userLocation, setUserLocation] = useState<SimpleCoord | null>(null);
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [spawns, setSpawns] = useState<PokemonSpawn[]>([]);
+  
+  // New State for Catching
+  const [selectedPokemon, setSelectedPokemon] = useState<PokemonSpawn | null>(null);
+  const [catching, setCatching] = useState(false);
+  
   const hasCenteredOnce = useRef(false);
+  const mapRef = useRef<MapView>(null);
 
   // 1. Request Permission
   const requestLocationPermission = async () => {
@@ -109,8 +116,7 @@ const HuntScreen: React.FC = () => {
             buttonPositive: "OK",
           }
         );
-        const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
-        setHasLocationPermission(ok);
+        setHasLocationPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
       } else {
         setHasLocationPermission(true);
       }
@@ -135,17 +141,13 @@ const HuntScreen: React.FC = () => {
 
     if (!hasCenteredOnce.current) {
       hasCenteredOnce.current = true;
-      setRegion({
-        ...region,
-        latitude: current.latitude,
-        longitude: current.longitude,
-      });
+      setRegion({ ...region, latitude: current.latitude, longitude: current.longitude });
     }
   };
 
   const handleCenterOnUser = () => {
     if (userLocation) {
-      // @ts-ignore - mapRef typing can be tricky
+      // @ts-ignore
       mapRef.current?.animateToRegion({
         ...region,
         latitude: userLocation.latitude,
@@ -161,31 +163,99 @@ const HuntScreen: React.FC = () => {
     const baseLat = userLocation?.latitude ?? region.latitude;
     const baseLon = userLocation?.longitude ?? region.longitude;
 
-    // Generate 3 random spawns near the center
     const newSpawns: PokemonSpawn[] = [];
     for (let i = 0; i < 3; i++) {
       newSpawns.push(spawnRandomPokemon(baseLat, baseLon));
     }
-
     setSpawns((prev) => [...prev, ...newSpawns]);
-
-    // Check if any are super close (capture range)
-    const nearby = newSpawns.filter((pkm) => {
-      const dist = distanceInMeters(baseLat, baseLon, pkm.latitude, pkm.longitude);
-      return dist < 50; // 50 meters
-    });
-
-    if (nearby.length > 0) {
-      Alert.alert(
-        "Wild Pokémon Nearby!",
-        `You found a ${nearby[0].name} (${nearby[0].biome})! Get closer to catch it!`
-      );
-    } else {
-      Alert.alert("Scanner Result", "3 Pokémon detected nearby. Check your map!");
-    }
+    
+    // Clear selection when rescanning
+    setSelectedPokemon(null);
+    try { Vibration.vibrate(100); } catch(e){} // Safe vibrate
   };
 
-  const mapRef = useRef<MapView>(null);
+  // 4. Catch Logic (FIXED SILENT FAILURE)
+  const handleCatchPokemon = async () => {
+    if (!selectedPokemon) return;
+
+    // FIX: Fallback to region center if userLocation is null
+    const currentLat = userLocation?.latitude ?? region.latitude;
+    const currentLon = userLocation?.longitude ?? region.longitude;
+
+    const dist = distanceInMeters(
+      currentLat, currentLon,
+      selectedPokemon.latitude, selectedPokemon.longitude
+    );
+
+    if (dist > 200) {
+      Alert.alert("Too Far!", `Get closer! It is ${Math.round(dist)}m away.`);
+      return;
+    }
+
+    setCatching(true);
+    
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        Alert.alert("Error", "You must be logged in to catch Pokémon.");
+        return;
+      }
+
+      // --- 1. NEW: Fetch Username for the Feed ---
+      // We need to fetch the user profile first to get the name
+      const userDoc = await firestore().collection('users').doc(currentUser.uid).get();
+      const username = userDoc.data()?.username || "Trainer";
+
+      // --- 2. NEW: Use Batch Write (Safety) ---
+      const batch = firestore().batch();
+
+      // A. Add to Private Collection (My Pokemon)
+      const myPokemonRef = firestore()
+        .collection('users')
+        .doc(currentUser.uid)
+        .collection('myPokemon')
+        .doc(); // Auto-generate ID
+      
+      batch.set(myPokemonRef, {
+        name: selectedPokemon.name,
+        caughtAt: firestore.FieldValue.serverTimestamp(),
+        biome: selectedPokemon.biome
+      });
+
+      // B. Update User Stats (Increment Count)
+      const userRef = firestore().collection('users').doc(currentUser.uid);
+      batch.update(userRef, {
+        pokedexCount: firestore.FieldValue.increment(1)
+      });
+
+      // C. NEW: Add to Public Feed
+      const feedRef = firestore().collection('feed').doc();
+      batch.set(feedRef, {
+        username: username,
+        pokemonName: selectedPokemon.name,
+        timestamp: firestore.FieldValue.serverTimestamp(),
+        biome: selectedPokemon.biome,
+        userId: currentUser.uid // Useful if you want to make the name clickable later
+      });
+
+      // Commit all 3 writes at once
+      await batch.commit();
+
+      // --- Success UI (Same as before) ---
+      Alert.alert("Gotcha!", `You caught a ${selectedPokemon.name}!`);
+      try { Vibration.vibrate([0, 500, 200, 500]); } catch(e){} 
+
+      // Remove from map
+      setSpawns((prev) => prev.filter(p => p.id !== selectedPokemon.id));
+      setSelectedPokemon(null);
+
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Oh no!", "The Pokémon broke free! (Network Error)");
+    } finally {
+      setCatching(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -200,29 +270,54 @@ const HuntScreen: React.FC = () => {
     <View style={styles.container}>
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE} // Forces Google Maps
+        provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={DEFAULT_REGION}
         showsUserLocation={hasLocationPermission}
-        showsMyLocationButton={false} // We made a custom one
+        showsMyLocationButton={false}
         onUserLocationChange={handleUserLocationChange}
+        onPress={() => setSelectedPokemon(null)}
       >
         {spawns.map((pkm) => (
           <Marker
             key={pkm.id}
             coordinate={{ latitude: pkm.latitude, longitude: pkm.longitude }}
             title={pkm.name}
-            description={`Type: ${pkm.biome}`}
-            pinColor={pkm.biome === 'water' ? 'blue' : pkm.biome === 'urban' ? 'purple' : 'green'}
+            onPress={(e) => {
+              e.stopPropagation();
+              setSelectedPokemon(pkm);
+            }}
+            pinColor={
+              selectedPokemon?.id === pkm.id ? 'red' :
+              pkm.biome === 'water' ? 'blue' : 
+              pkm.biome === 'urban' ? 'purple' : 'green'
+            }
           />
         ))}
       </MapView>
 
-      {/* UI Overlay */}
       <View style={styles.overlayContainer}>
         <View style={styles.infoCard}>
-          <Text style={styles.title}>📍 Hunt Mode</Text>
-          <Text style={styles.subtitle}>{spawns.length} Pokémon detected in area</Text>
+          {selectedPokemon ? (
+            <>
+              <Text style={styles.title}>Target: {selectedPokemon.name}</Text>
+              <Text style={styles.subtitle}>Biome: {selectedPokemon.biome}</Text>
+              <Text style={styles.distanceText}>
+                 {/* Display distance relative to map center if GPS missing */}
+                 Distance: {Math.round(distanceInMeters(
+                   userLocation?.latitude ?? region.latitude, 
+                   userLocation?.longitude ?? region.longitude, 
+                   selectedPokemon.latitude, 
+                   selectedPokemon.longitude
+                 ))}m
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.title}>📍 Hunt Mode</Text>
+              <Text style={styles.subtitle}>{spawns.length} Pokémon visible</Text>
+            </>
+          )}
         </View>
 
         <View style={styles.buttonRow}>
@@ -230,10 +325,27 @@ const HuntScreen: React.FC = () => {
             <Icon name="navigation" size={24} color="#CC0000" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.pillButton, styles.redBtn]} onPress={handleScanForPokemon}>
-            <Icon name="radio" size={20} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.btnText}>SCAN AREA</Text>
-          </TouchableOpacity>
+          {selectedPokemon ? (
+            <TouchableOpacity 
+              style={[styles.pillButton, styles.greenBtn]} 
+              onPress={handleCatchPokemon}
+              disabled={catching}
+            >
+              {catching ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon name="disc" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.btnText}>CATCH IT!</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[styles.pillButton, styles.redBtn]} onPress={handleScanForPokemon}>
+              <Icon name="radio" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.btnText}>SCAN AREA</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>
@@ -247,50 +359,23 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   textDark: { marginTop: 10, color: '#333' },
-  
-  overlayContainer: {
-    position: "absolute",
-    bottom: 30,
-    left: 20,
-    right: 20,
-  },
+  overlayContainer: { position: "absolute", bottom: 30, left: 20, right: 20 },
   infoCard: {
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 15,
     marginBottom: 15,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
     alignItems: 'center'
   },
   title: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   subtitle: { fontSize: 12, color: '#666', marginTop: 4 },
-
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  circleButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-  },
-  pillButton: {
-    flex: 1,
-    height: 50,
-    marginLeft: 15,
-    borderRadius: 25,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-  },
+  distanceText: { fontSize: 12, color: '#CC0000', fontWeight: 'bold', marginTop: 4 },
+  buttonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  circleButton: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  pillButton: { flex: 1, height: 50, marginLeft: 15, borderRadius: 25, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', elevation: 5 },
   whiteBtn: { backgroundColor: 'white' },
   redBtn: { backgroundColor: '#CC0000' },
+  greenBtn: { backgroundColor: '#28a745' },
   btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
 });

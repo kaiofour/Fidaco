@@ -1,197 +1,224 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Image,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-} from "react-native";
-import Icon from "react-native-vector-icons/Feather";
+import React, { useEffect, useState, FC } from 'react';
+import { 
+    View, 
+    Text, 
+    FlatList, 
+    Image, 
+    StyleSheet, 
+    ActivityIndicator,
+    SafeAreaView
+} from 'react-native';
+import firestore from '@react-native-firebase/firestore';
+import Icon from 'react-native-vector-icons/Feather';
 
-// Import your new component
-// Adjust the path based on where you created the file
-import BottomNavbar from "../components/BottomNavbar"; 
+// 1. Types
+type FeedItem = {
+    id: string;
+    username: string;
+    pokemonName: string;
+    timestamp: any; // Firestore timestamp
+    biome: string;
+};
 
-const pokemonData = [
-  { name: "Charizard", image: require("../../assets/icons/charizard.png") },
-  { name: "Blastoise", image: require("../../assets/icons/Blastoise.png") },
-  { name: "Beedrill", image: require("../../assets/icons/beedrill.jpg") },
-  { name: "Butterfree", image: require("../../assets/icons/Butterfree.png") },
-];
+// 2. Helper to get Pokémon Image from Name
+// We use the same logic as PokedexScreen but simpler (direct URL construction)
+const getPokemonImageUrl = (name: string) => {
+    // Convert "Mr. Mime" -> "mr-mime" for API consistency if needed, 
+    // but usually lowercase is enough for the sprite URL.
+    const cleanName = name.toLowerCase().replace('.', '').replace(' ', '-');
+    // Using the official artwork or sprite
+    return `https://img.pokemondb.net/sprites/home/normal/${cleanName}.png`;
+};
 
-const HomeScreen = () => {
-  const [selectedCategory, setSelectedCategory] = useState("All");
+// 3. Single Feed Card Component
+const FeedCard: FC<{ item: FeedItem }> = ({ item }) => {
+    const imageUrl = getPokemonImageUrl(item.pokemonName);
+    
+    // Format timestamp
+    const timeString = item.timestamp?.toDate 
+        ? item.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : 'Just now';
 
-  // This function handles the actual navigation logic
-  const handleNavigation = (tabName: string) => {
-    console.log(`Navigating to ${tabName}...`);
-    // Later, you will add real navigation code here (e.g., navigation.navigate(tabName))
-  };
-
-  return (
-    <View style={styles.container}>
-      {/* Scrollable Main Content */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {/* Search Bar */}
-        <View style={styles.searchWrapper}>
-          <View style={styles.searchContainer}>
-            <TextInput
-              placeholder="Enter name or category"
-              placeholderTextColor="#888"
-              style={styles.searchInput}
-            />
-            <Icon name="search" size={20} color="#888" />
-          </View>
-        </View>
-
-        {/* Two Cards */}
-        <View style={styles.row}>
-          <View style={styles.mysteryCard}>
-            <Text style={styles.questionMark}>?</Text>
-          </View>
-          <View style={styles.mysteryCard}>
-            <Text style={styles.questionMark}>?</Text>
-          </View>
-        </View>
-
-        {/* Tabs (Categories) */}
-        <View style={styles.tabsContainer}>
-          {["All", "Men", "Women"].map((tab) => (
-            <TouchableOpacity key={tab} onPress={() => setSelectedCategory(tab)}>
-              <Text
-                style={[
-                  styles.tabText,
-                  selectedCategory === tab && styles.activeTab,
-                ]}
-              >
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Pokémon Grid */}
-        <View style={styles.grid}>
-          {pokemonData.map((item, index) => (
-            <View key={index} style={styles.card}>
-              <Image source={item.image} style={styles.cardImage} />
-              <Text style={styles.cardName}>{item.name}</Text>
+    return (
+        <View style={styles.card}>
+            {/* Left: Pokemon Image */}
+            <View style={[styles.imageContainer, { 
+                backgroundColor: item.biome === 'water' ? '#E3F2FD' : item.biome === 'urban' ? '#F3E5F5' : '#E8F5E9' 
+            }]}>
+                <Image 
+                    source={{ uri: imageUrl }} 
+                    style={styles.sprite} 
+                />
             </View>
-          ))}
+
+            {/* Right: Text Info */}
+            <View style={styles.textContainer}>
+                <View style={styles.headerRow}>
+                    <Text style={styles.username}>{item.username}</Text>
+                    <Text style={styles.timestamp}>{timeString}</Text>
+                </View>
+                
+                <Text style={styles.actionText}>
+                    caught a <Text style={styles.pokemonName}>{item.pokemonName}</Text>!
+                </Text>
+
+                <View style={styles.badgeRow}>
+                    <Icon name="map-pin" size={12} color="#888" />
+                    <Text style={styles.biomeText}>{item.biome} biome</Text>
+                </View>
+            </View>
         </View>
+    );
+};
 
-        <Text style={styles.scrollHint}>Scroll Down 👇</Text>
-      </ScrollView>
+// 4. Main Feed Screen
+const HomeScreen: FC = () => {
+    const [feedData, setFeedData] = useState<FeedItem[]>([]);
+    const [loading, setLoading] = useState(true);
 
-      
-      
-    </View>
-  );
+    useEffect(() => {
+        // Subscribe to the "feed" collection in real-time
+        const subscriber = firestore()
+            .collection('feed')
+            .orderBy('timestamp', 'desc') // Newest first
+            .limit(50) // Show last 50 catches
+            .onSnapshot(querySnapshot => {
+                const list: FeedItem[] = [];
+                querySnapshot.forEach(documentSnapshot => {
+                    list.push({
+                        id: documentSnapshot.id,
+                        ...documentSnapshot.data(),
+                    } as FeedItem);
+                });
+
+                setFeedData(list);
+                setLoading(false);
+            }, error => {
+                console.error(error);
+                setLoading(false);
+            });
+
+        // Unsubscribe when screen unmounts
+        return () => subscriber();
+    }, []);
+
+    if (loading) {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator size="large" color="#CC0000" />
+            </View>
+        );
+    }
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>Global Catch Feed</Text>
+            </View>
+
+            <FlatList
+                data={feedData}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => <FeedCard item={item} />}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                    <View style={styles.center}>
+                        <Text style={styles.emptyText}>No catches yet. Be the first!</Text>
+                    </View>
+                }
+            />
+        </SafeAreaView>
+    );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA", // Added a light background
-    paddingTop: 50, // Safe area padding
-  },
-  scrollContent: {
-    paddingBottom: 20, // Space for scrolling
-  },
-  searchWrapper: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    height: 50,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  searchInput: {
-    flex: 1,
-    marginRight: 10,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  mysteryCard: {
-    width: "48%",
-    height: 100,
-    backgroundColor: "#FFCC00",
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  questionMark: {
-    fontSize: 40,
-    color: "#fff",
-    fontWeight: "bold",
-  },
-  tabsContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  tabText: {
-    fontSize: 16,
-    color: "#888",
-    marginRight: 20,
-    fontWeight: "600",
-  },
-  activeTab: {
-    color: "#000",
-    borderBottomWidth: 2,
-    borderBottomColor: "#000",
-    paddingBottom: 2,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-  },
-  card: {
-    width: "48%",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 15,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  cardImage: {
-    width: 80,
-    height: 80,
-    marginBottom: 10,
-    resizeMode: "contain",
-  },
-  cardName: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  scrollHint: {
-    textAlign: "center",
-    color: "#aaa",
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  // NOTE: I removed the old bottomNav styles here because they are now in the component
+    container: { flex: 1, backgroundColor: '#F2F2F2' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
+    
+    header: {
+        backgroundColor: '#CC0000',
+        paddingVertical: 15,
+        alignItems: 'center',
+        elevation: 4,
+    },
+    headerTitle: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+
+    listContent: {
+        padding: 10,
+    },
+    
+    // Card Styles
+    card: {
+        flexDirection: 'row',
+        backgroundColor: 'white',
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 10,
+        alignItems: 'center',
+        elevation: 2, // Shadow for Android
+        shadowColor: '#000', // Shadow for iOS
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
+    },
+    imageContainer: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 15,
+    },
+    sprite: {
+        width: 50,
+        height: 50,
+        resizeMode: 'contain',
+    },
+    textContainer: {
+        flex: 1,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    username: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+    timestamp: {
+        fontSize: 12,
+        color: '#999',
+    },
+    actionText: {
+        fontSize: 14,
+        color: '#555',
+        marginBottom: 6,
+    },
+    pokemonName: {
+        fontWeight: 'bold',
+        color: '#CC0000', // Red highlight for pokemon name
+        textTransform: 'capitalize',
+    },
+    badgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    biomeText: {
+        fontSize: 12,
+        color: '#888',
+        marginLeft: 4,
+        textTransform: 'capitalize',
+    },
+    emptyText: {
+        color: '#888',
+        fontSize: 16,
+    }
 });
 
 export default HomeScreen;
