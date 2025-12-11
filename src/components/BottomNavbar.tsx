@@ -1,40 +1,55 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import Icon from "react-native-vector-icons/Feather";
 
-// Define the types for our props so TypeScript is happy
-interface BottomNavbarProps {
-  activeTab: string;
-  onTabPress: (tabName: string) => void;
-}
+const BottomNavbar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
+  
+  // This helper function gets the icon name based on the route name
+  const getIconName = (routeName: string) => {
+    switch (routeName) {
+      case "Hunt": return "crosshair";
+      case "Pokedex": return "grid";
+      case "AR": return "camera";
+      case "Feed": return "list";
+      case "Profile": return "user";
+      default: return "circle";
+    }
+  };
 
-const tabs = [
-  { name: "Hunt", icon: "crosshair" },
-  { name: "Pokedex", icon: "grid" },
-  { name: "AR", icon: "camera" }, // "AR" isn't a Feather icon, using camera as placeholder
-  { name: "Feed", icon: "list" },
-  { name: "Profile", icon: "user" },
-];
-
-const BottomNavbar = ({ activeTab, onTabPress }: BottomNavbarProps) => {
   return (
     <View style={styles.bottomNav}>
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.name;
+      {state.routes.map((route, index) => {
+        const { options } = descriptors[route.key];
         
+        // Check if this tab is currently active
+        const isFocused = state.index === index;
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
         return (
           <TouchableOpacity
-            key={tab.name}
+            key={route.key}
             style={styles.navItem}
-            onPress={() => onTabPress(tab.name)}
+            onPress={onPress}
           >
             <Icon
-              name={tab.icon} // I updated "circle" to dynamic icons
+              name={getIconName(route.name)}
               size={24}
-              color={isActive ? "#FF5733" : "#888"} // Orange if active, Gray if not
+              color={isFocused ? "#FF5733" : "#888"}
             />
-            <Text style={[styles.navLabel, isActive && styles.activeLabel]}>
-              {tab.name}
+            <Text style={[styles.navLabel, isFocused && styles.activeLabel]}>
+              {route.name}
             </Text>
           </TouchableOpacity>
         );
@@ -53,12 +68,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderTopWidth: 1,
     borderTopColor: "#eee",
-    // Shadow for iOS
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
-    // Elevation for Android
     elevation: 10,
   },
   navItem: {
