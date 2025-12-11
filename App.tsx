@@ -26,16 +26,11 @@ function MainTabNavigator() {
       tabBar={(props) => <BottomNavbar {...props} />} 
       screenOptions={{ headerShown: false }}
     >
+
       <Tab.Screen name="Hunt" component={Hunt} />
-      
-      {/* Pokedex Tab */}
       <Tab.Screen name="Pokedex" component={Pokedex} />
-      
       <Tab.Screen name="AR" component={AugmentedReality} />
-      
-      {/* Feed Tab NOW POINTS TO HomeScreen */}
       <Tab.Screen name="Feed" component={HomeScreen} />
-      
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -48,11 +43,12 @@ export default function App() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         
         {/* Authentication Screens */}
-        {/* <Stack.Screen name="SignIn" component={SignInScreen} />
-        <Stack.Screen name="SignUp" component={SignUpScreen} /> */}
+        <Stack.Screen name="SignIn" component={SignInScreen} />
+        <Stack.Screen name="SignUp" component={SignUpScreen} />
 
         {/* Main App */}
         <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+        
 
       </Stack.Navigator>
     </NavigationContainer>
