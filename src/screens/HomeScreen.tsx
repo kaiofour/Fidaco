@@ -86,12 +86,7 @@ const HomeScreen = () => {
         <Text style={styles.scrollHint}>Scroll Down 👇</Text>
       </ScrollView>
 
-      {/* NEW: Reusable Bottom Navbar Component */}
-      {/* We assume HomeScreen corresponds to the "Pokedex" tab or maybe "Feed" */}
-      <BottomNavbar 
-        activeTab="Feed" 
-        onTabPress={handleNavigation} 
-      />
+      
       
     </View>
   );
