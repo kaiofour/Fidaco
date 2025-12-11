@@ -6,14 +6,55 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Image,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
+import auth from '@react-native-firebase/auth'; // Import Firebase Auth
 
-const SignInScreen = ({navigation} : any) => {
-  
+const SignInScreen = ({ navigation }: any) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    // 1. Basic Validation
+    if (!email || !password) {
+      Alert.alert("Error", "Please enter both email and password.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // 2. Sign In with Firebase
+      await auth().signInWithEmailAndPassword(email, password);
+      
+      // 3. Navigate to Main App (Reset stack so they can't go back to login)
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+
+    } catch (error: any) {
+      console.log(error);
+      let errorMessage = "Invalid email or password";
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = "No user found with this email.";
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = "Incorrect password.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "That email address is invalid.";
+      }
+
+      Alert.alert("Login Failed", errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,23 +65,29 @@ const SignInScreen = ({navigation} : any) => {
         <View style={styles.centerBox}>
           {/* Title */}
           <Text style={styles.title}>
-            Sign in with your email or phone number
+            Sign in with your email
           </Text>
 
-          {/* Email */}
+          {/* Email Input */}
           <TextInput
             style={styles.input}
-            placeholder="Email or Phone Number"
+            placeholder="Email"
             placeholderTextColor="#777"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
           />
 
-          {/* Password */}
+          {/* Password Input */}
           <View style={styles.passwordContainer}>
             <TextInput
               style={styles.passwordInput}
               placeholder="Enter Your Password"
               placeholderTextColor="#777"
               secureTextEntry={!passwordVisible}
+              value={password}
+              onChangeText={setPassword}
             />
             <TouchableOpacity
               onPress={() => setPasswordVisible(!passwordVisible)}
@@ -53,38 +100,25 @@ const SignInScreen = ({navigation} : any) => {
             </TouchableOpacity>
           </View>
 
-          {/* Sign Up Button */}
-          <TouchableOpacity style={styles.signUpButton}>
-            <Text style={styles.signUpText}>Login</Text>
+          {/* Login Button */}
+          <TouchableOpacity 
+            style={styles.signUpButton} 
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.signUpText}>Login</Text>
+            )}
           </TouchableOpacity>
 
           <Text style={styles.orText}>or</Text>
 
-          {/* Google */}
-          <TouchableOpacity style={styles.socialBtn}>
-            <Image
-              source={require("../../assets/icons/google-icon.png")}
-              style={styles.socialIcon}
-            />
-            <Text style={styles.socialText}>Sign in with Google</Text>
-          </TouchableOpacity>
-
-          {/* Facebook */}
-          <TouchableOpacity style={styles.socialBtn}>
-            <Image
-              source={require("../../assets/icons/facebook-icon.png")}
-              style={styles.socialIcon}
-            />
-            <Text style={styles.socialText}>Sign in with Facebook</Text>
-          </TouchableOpacity>
-
           {/* Bottom link */}
           <View style={styles.bottomRow}>
+            <Text>Don't have an account? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-              <Text>Don't have an account? Sign Up</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity>
               <Text style={styles.signUpLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
@@ -94,117 +128,84 @@ const SignInScreen = ({navigation} : any) => {
   );
 };
 
-export default SignInScreen;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
   },
-
   scrollContent: {
     flexGrow: 1,
-  },
-
-  centerBox: {
-    flex: 1,
-    paddingHorizontal: 22,
     justifyContent: "center",
-    paddingVertical: 40,
+    paddingHorizontal: 20,
   },
-
+  centerBox: {
+    width: "100%",
+    alignItems: "center",
+  },
   title: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111",
-    marginBottom: 25,
-    textAlign: "left",
+    fontSize: 24,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 30,
+    color: "#333",
   },
-
   input: {
     width: "100%",
-    height: 48,
-    borderWidth: 1,
+    height: 50,
     borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 15,
     marginBottom: 15,
+    color: "#333",
+    backgroundColor: "#FAFAFA",
   },
-
   passwordContainer: {
+    width: "100%",
+    height: 50,
+    borderColor: "#ddd",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 15,
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 48,
     marginBottom: 20,
+    backgroundColor: "#FAFAFA",
   },
-
   passwordInput: {
     flex: 1,
-    fontSize: 16,
+    color: "#333",
   },
-
   signUpButton: {
-    backgroundColor: "#1DB954",
-    height: 48,
-    borderRadius: 8,
+    width: "100%",
+    height: 50,
+    backgroundColor: "#FF5733",
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
+    shadowColor: "#FF5733",
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
-
   signUpText: {
     color: "#fff",
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "bold",
   },
-
   orText: {
-    textAlign: "center",
-    marginVertical: 15,
-    color: "#666",
-    fontSize: 14,
+    marginVertical: 20,
+    color: "#aaa",
   },
-
-  socialBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    height: 50,
-    borderRadius: 8,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-  },
-
-  socialIcon: {
-    width: 26,
-    height: 26,
-    marginRight: 10,
-  },
-
-  socialText: {
-    fontSize: 16,
-  },
-
   bottomRow: {
     flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 20,
+    marginTop: 10,
   },
-
-  bottomText: {
-    fontSize: 14,
-    color: "#444",
-  },
-
   signUpLink: {
-    fontSize: 14,
-    color: "#1DB954",
-    fontWeight: "600",
+    color: "#FF5733",
+    fontWeight: "bold",
+    marginLeft: 5,
   },
 });
+
+export default SignInScreen;
