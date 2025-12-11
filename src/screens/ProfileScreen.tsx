@@ -54,10 +54,12 @@ const ProfileScreen = ({ navigation }: any) => {
   const handleLogout = async () => {
     try {
       await auth().signOut();
-      // Reset navigation stack so user cannot go "back" to the profile
+      
+      // FIX: Reset to the 'Auth' stack, not the 'SignIn' screen directly.
+      // The 'Auth' stack will automatically show the 'SignIn' screen first.
       navigation.reset({
         index: 0,
-        routes: [{ name: 'SignIn' }],
+        routes: [{ name: 'Auth' }], 
       });
     } catch (error) {
       Alert.alert("Error", "Failed to log out");

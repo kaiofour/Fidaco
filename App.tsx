@@ -1,56 +1,151 @@
-import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+// App.tsx
 
-// 1. IMPORT SCREENS
-import SignInScreen from "./src/screens/SignInScreen";
-import SignUpScreen from "./src/screens/SignUpScreen";
-import HomeScreen from "./src/screens/HomeScreen"; 
-import ProfileScreen from "./src/screens/ProfileScreen";
-import AugmentedReality from "./src/screens/AugmentedReality";
-import Hunt from "./src/screens/Hunt"; 
-import Pokedex from "./src/screens/Pokedex"; // Assuming you will put the Pokedex grid here later
+import 'react-native-gesture-handler';
+import React, { FC } from 'react';
+import { NavigationContainer, RouteProp } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
-// 2. IMPORT YOUR CUSTOM NAVBAR
-import BottomNavbar from "./src/components/BottomNavbar";
+// --- IMPORTS ---
+import SignInScreen from './src/screens/SignInScreen';
+import SignUpScreen from './src/screens/SignUpScreen';
+import PokedexScreen from './src/screens/PokedexScreen'; 
+import PokemonDetailScreen from './src/screens/PokemonDetailScreen';
+import AugmentedReality from './src/screens/AugmentedReality';
+import HomeScreen from './src/screens/HomeScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import Hunt from './src/screens/Hunt';
+import BottomNavbar from './src/components/BottomNavbar';
 
-const Stack = createStackNavigator();
-const Tab = createBottomTabNavigator();
+// Context Provider
+import { PokemonProvider } from './src/context/PokemonContext'; 
 
-// 3. DEFINE THE TAB NAVIGATOR (The Main App)
+// ----------------------------------------------------
+// 1. DEFINE NAVIGATOR TYPES (Param Lists)
+// ----------------------------------------------------
+
+type PokedexStackParamList = {
+    PokedexList: undefined;
+    PokemonDetail: { pokemonId: string; pokemonName: string; pokemonImage: string; pokemonColor?: string; };
+};
+
+type AuthStackParamList = {
+    SignIn: undefined;
+    SignUp: undefined;
+    PublicPokedex: undefined; 
+};
+
+type MainTabParamList = {
+    Hunt: undefined;
+    Pokedex: undefined;
+    AR: undefined;
+    Feed: undefined;
+    Profile: undefined;
+};
+
+type RootStackParamList = {
+    Auth: undefined;
+    MainTabs: undefined;
+};
+
+
+// ----------------------------------------------------
+// 2. INSTANTIATE TYPED NAVIGATORS
+// ----------------------------------------------------
+
+const RootStack = createStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
+const PokedexStack = createStackNavigator<PokedexStackParamList>(); 
+const AuthStack = createStackNavigator<AuthStackParamList>(); 
+
+// ----------------------------------------------------
+// 3. HELPER/WRAPPER COMPONENTS
+// ----------------------------------------------------
+
+const PublicPokedexWrapper: FC = (props: any) => {
+    return <PokedexScreen {...props} />;
+};
+
+
+// ----------------------------------------------------
+// 4. NAVIGATOR COMPONENTS
+// ----------------------------------------------------
+
+function PokedexFlow() {
+    return (
+        <PokedexStack.Navigator
+            screenOptions={{
+                headerStyle: { backgroundColor: '#CC0000' },
+                headerTintColor: '#fff',
+                headerTitleStyle: { fontWeight: 'bold' },
+            }}
+        >
+            <PokedexStack.Screen 
+                name="PokedexList" 
+                component={PokedexScreen} 
+                options={{ title: 'PokeExplorer Pokedex' }}
+            />
+            <PokedexStack.Screen 
+                name="PokemonDetail" 
+                component={PokemonDetailScreen} 
+                options={({ route }: { route: RouteProp<PokedexStackParamList, 'PokemonDetail'> }) => ({
+                    title: route.params.pokemonName || 'Details',
+                })}
+            />
+        </PokedexStack.Navigator>
+    );
+}
+
 function MainTabNavigator() {
-  return (
-    <Tab.Navigator
-      // Connects your custom BottomNavbar component
-      tabBar={(props) => <BottomNavbar {...props} />} 
-      screenOptions={{ headerShown: false }}
-    >
-
-      <Tab.Screen name="Hunt" component={Hunt} />
-      <Tab.Screen name="Pokedex" component={Pokedex} />
-      <Tab.Screen name="AR" component={AugmentedReality} />
-      <Tab.Screen name="Feed" component={HomeScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
-  );
+    return (
+        <Tab.Navigator
+            initialRouteName="Pokedex" 
+            tabBar={(props) => <BottomNavbar {...props} />}
+            screenOptions={{ headerShown: false }}
+        >
+            <Tab.Screen name="Hunt" component={Hunt} />
+            <Tab.Screen name="Pokedex" component={PokedexFlow} />
+            <Tab.Screen name="AR" component={AugmentedReality} />
+            <Tab.Screen name="Feed" component={HomeScreen} />
+            <Tab.Screen name="Profile" component={ProfileScreen} />
+        </Tab.Navigator>
+    );
 }
 
-// 4. DEFINE THE ROOT STACK (Login -> Main App)
-export default function App() {
-  return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        
-        {/* Authentication Screens */}
-        <Stack.Screen name="SignIn" component={SignInScreen} />
-        <Stack.Screen name="SignUp" component={SignUpScreen} />
-
-        {/* Main App */}
-        <Stack.Screen name="MainTabs" component={MainTabNavigator} />
-        
-
-      </Stack.Navigator>
-    </NavigationContainer>
-  );
+function AuthStackComponent() {
+    return (
+        <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+            <AuthStack.Screen name="SignIn" component={SignInScreen} />
+            <AuthStack.Screen name="SignUp" component={SignUpScreen} />
+            <AuthStack.Screen name="PublicPokedex" component={PublicPokedexWrapper} />
+        </AuthStack.Navigator>
+    );
 }
+
+// ----------------------------------------------------
+// 5. ROOT APP COMPONENT
+// ----------------------------------------------------
+
+const App: FC = () => {
+    // 👇 CHANGED TO FALSE: This forces the app to start at 'Auth' (SignIn) instead of 'MainTabs'
+    const userLoggedIn = false; 
+
+    // Determines the starting route of the app
+    const initialRoute = userLoggedIn ? 'MainTabs' : 'Auth'; 
+
+    return (
+        <PokemonProvider>
+            <NavigationContainer>
+                <RootStack.Navigator 
+                    screenOptions={{ headerShown: false }}
+                    initialRouteName={initialRoute} 
+                >
+                    <RootStack.Screen name="Auth" component={AuthStackComponent} />
+                    <RootStack.Screen name="MainTabs" component={MainTabNavigator} />
+                </RootStack.Navigator>
+            </NavigationContainer>
+        </PokemonProvider>
+    );
+};
+
+export default App;
