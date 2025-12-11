@@ -11,7 +11,8 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 
-const SignInScreen = () => {
+const SignInScreen = ({navigation} : any) => {
+  
   const [passwordVisible, setPasswordVisible] = useState(false);
 
   return (
@@ -79,7 +80,9 @@ const SignInScreen = () => {
 
           {/* Bottom link */}
           <View style={styles.bottomRow}>
-            <Text style={styles.bottomText}>Don’t have an account? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+              <Text>Don't have an account? Sign Up</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity>
               <Text style={styles.signUpLink}>Sign Up</Text>
