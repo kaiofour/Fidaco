@@ -24,6 +24,7 @@ type CaughtPokemon = {
 
 const ProfileScreen = ({ navigation }: any) => {
   // --- 1. ALL HOOKS MUST BE AT THE TOP ---
+  // (Do not put 'if (loading)' or returns before this section)
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState({
     username: "Trainer",
@@ -33,7 +34,6 @@ const ProfileScreen = ({ navigation }: any) => {
   });
   const [caughtPokemon, setCaughtPokemon] = useState<CaughtPokemon[]>([]);
 
-  // This hook runs every time you look at the profile screen
   useFocusEffect(
     useCallback(() => {
       const fetchUserData = async () => {
@@ -82,7 +82,7 @@ const ProfileScreen = ({ navigation }: any) => {
   const handleLogout = async () => {
     try {
       await auth().signOut();
-      // FIX: Reset to 'Auth' stack, NOT 'SignIn' screen
+      // FIX: Reset to 'Auth' stack so the navigator can find the screen
       navigation.reset({
         index: 0,
         routes: [{ name: 'Auth' }], 
@@ -138,7 +138,7 @@ const ProfileScreen = ({ navigation }: any) => {
         </View>
       </View>
 
-      {/* Recent Catches */}
+      {/* Recent Catches Section */}
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Recent Catches</Text>
         {caughtPokemon.length === 0 ? (
@@ -161,11 +161,17 @@ const ProfileScreen = ({ navigation }: any) => {
         )}
       </View>
 
-      {/* Menu */}
+      {/* Menu Options */}
       <View style={styles.menuContainer}>
         <TouchableOpacity style={styles.menuItem}>
           <Icon name="settings" size={22} color="#555" />
           <Text style={styles.menuText}>Settings</Text>
+          <Icon name="chevron-right" size={22} color="#ccc" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.menuItem}>
+          <Icon name="share-2" size={22} color="#555" />
+          <Text style={styles.menuText}>Share Profile</Text>
           <Icon name="chevron-right" size={22} color="#ccc" />
         </TouchableOpacity>
 
@@ -199,6 +205,8 @@ const styles = StyleSheet.create({
   statNumber: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   statLabel: { fontSize: 12, color: '#888' },
   divider: { height: '60%', width: 1, backgroundColor: '#eee' },
+  
+  // Recent Catches Styles
   sectionContainer: { marginTop: 25, paddingHorizontal: 20 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 15 },
   emptyText: { fontStyle: 'italic', color: '#999' },
@@ -210,6 +218,7 @@ const styles = StyleSheet.create({
   pokemonName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginTop: 8 },
   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   badgeText: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' },
+
   menuContainer: { marginTop: 10, paddingHorizontal: 20, paddingBottom: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 10, elevation: 1 },
   menuText: { flex: 1, marginLeft: 15, fontSize: 16, color: '#333', fontWeight: '500' },

@@ -17,6 +17,7 @@ import MapView, {
   PROVIDER_GOOGLE
 } from "react-native-maps";
 import Icon from 'react-native-vector-icons/Feather';
+import { useNavigation } from '@react-navigation/native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 
@@ -91,16 +92,16 @@ function distanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number
 
 // --- Component ---
 const HuntScreen: React.FC = () => {
+  const navigation = useNavigation();
   const [hasLocationPermission, setHasLocationPermission] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<SimpleCoord | null>(null);
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [spawns, setSpawns] = useState<PokemonSpawn[]>([]);
   
-  // New State for Catching
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonSpawn | null>(null);
-  const [catching, setCatching] = useState(false);
-  
+  const [catching, setCatching] = useState(false); // Used for Quick Catch loading state
+
   const hasCenteredOnce = useRef(false);
   const mapRef = useRef<MapView>(null);
 
@@ -169,16 +170,14 @@ const HuntScreen: React.FC = () => {
     }
     setSpawns((prev) => [...prev, ...newSpawns]);
     
-    // Clear selection when rescanning
     setSelectedPokemon(null);
-    try { Vibration.vibrate(100); } catch(e){} // Safe vibrate
+    try { Vibration.vibrate(100); } catch(e){} 
   };
 
-  // 4. Catch Logic (FIXED SILENT FAILURE)
-  const handleCatchPokemon = async () => {
+  // --- OPTION A: QUICK CATCH (Direct Firebase Write) ---
+  const handleQuickCatch = async () => {
     if (!selectedPokemon) return;
 
-    // FIX: Fallback to region center if userLocation is null
     const currentLat = userLocation?.latitude ?? region.latitude;
     const currentLon = userLocation?.longitude ?? region.longitude;
 
@@ -193,7 +192,7 @@ const HuntScreen: React.FC = () => {
     }
 
     setCatching(true);
-    
+
     try {
       const currentUser = auth().currentUser;
       if (!currentUser) {
@@ -201,20 +200,19 @@ const HuntScreen: React.FC = () => {
         return;
       }
 
-      // --- 1. NEW: Fetch Username for the Feed ---
-      // We need to fetch the user profile first to get the name
+      // 1. Fetch Username for Feed
       const userDoc = await firestore().collection('users').doc(currentUser.uid).get();
       const username = userDoc.data()?.username || "Trainer";
 
-      // --- 2. NEW: Use Batch Write (Safety) ---
+      // 2. Batch Write
       const batch = firestore().batch();
 
-      // A. Add to Private Collection (My Pokemon)
+      // Profile Ref
       const myPokemonRef = firestore()
         .collection('users')
         .doc(currentUser.uid)
         .collection('myPokemon')
-        .doc(); // Auto-generate ID
+        .doc();
       
       batch.set(myPokemonRef, {
         name: selectedPokemon.name,
@@ -222,26 +220,25 @@ const HuntScreen: React.FC = () => {
         biome: selectedPokemon.biome
       });
 
-      // B. Update User Stats (Increment Count)
+      // Stats Ref
       const userRef = firestore().collection('users').doc(currentUser.uid);
       batch.update(userRef, {
         pokedexCount: firestore.FieldValue.increment(1)
       });
 
-      // C. NEW: Add to Public Feed
+      // Feed Ref
       const feedRef = firestore().collection('feed').doc();
       batch.set(feedRef, {
         username: username,
         pokemonName: selectedPokemon.name,
         timestamp: firestore.FieldValue.serverTimestamp(),
         biome: selectedPokemon.biome,
-        userId: currentUser.uid // Useful if you want to make the name clickable later
+        userId: currentUser.uid
       });
 
-      // Commit all 3 writes at once
       await batch.commit();
 
-      // --- Success UI (Same as before) ---
+      // Success UI
       Alert.alert("Gotcha!", `You caught a ${selectedPokemon.name}!`);
       try { Vibration.vibrate([0, 500, 200, 500]); } catch(e){} 
 
@@ -251,10 +248,42 @@ const HuntScreen: React.FC = () => {
 
     } catch (error) {
       console.error(error);
-      Alert.alert("Oh no!", "The Pokémon broke free! (Network Error)");
+      Alert.alert("Error", "Could not catch Pokémon.");
     } finally {
       setCatching(false);
     }
+  };
+
+  // --- OPTION B: ENTER AR MODE ---
+  const handleEnterAR = () => {
+    if (!selectedPokemon) return;
+
+    const currentLat = userLocation?.latitude ?? region.latitude;
+    const currentLon = userLocation?.longitude ?? region.longitude;
+
+    const dist = distanceInMeters(
+      currentLat, currentLon,
+      selectedPokemon.latitude, selectedPokemon.longitude
+    );
+
+    if (dist > 200) {
+      Alert.alert("Too Far!", `Get closer! It is ${Math.round(dist)}m away.`);
+      return;
+    }
+
+    // Navigate to AR Screen
+    // @ts-ignore
+    navigation.navigate('MainTabs', { 
+        screen: 'AR', 
+        params: { 
+           pokemonName: selectedPokemon.name,
+           biome: selectedPokemon.biome
+        }
+    });
+
+    // Remove from map (Engaged!)
+    setSpawns((prev) => prev.filter(p => p.id !== selectedPokemon.id));
+    setSelectedPokemon(null);
   };
 
   if (loading) {
@@ -303,7 +332,6 @@ const HuntScreen: React.FC = () => {
               <Text style={styles.title}>Target: {selectedPokemon.name}</Text>
               <Text style={styles.subtitle}>Biome: {selectedPokemon.biome}</Text>
               <Text style={styles.distanceText}>
-                 {/* Display distance relative to map center if GPS missing */}
                  Distance: {Math.round(distanceInMeters(
                    userLocation?.latitude ?? region.latitude, 
                    userLocation?.longitude ?? region.longitude, 
@@ -325,23 +353,39 @@ const HuntScreen: React.FC = () => {
             <Icon name="navigation" size={24} color="#CC0000" />
           </TouchableOpacity>
 
+          {/* DYNAMIC BUTTONS */}
           {selectedPokemon ? (
-            <TouchableOpacity 
-              style={[styles.pillButton, styles.greenBtn]} 
-              onPress={handleCatchPokemon}
-              disabled={catching}
-            >
-              {catching ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Icon name="disc" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.btnText}>CATCH IT!</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={{flexDirection: 'row', flex: 1, marginLeft: 10, gap: 10}}>
+                {/* 1. Quick Catch Button */}
+                <TouchableOpacity 
+                    style={[styles.pillButton, styles.greenBtn]} 
+                    onPress={handleQuickCatch}
+                    disabled={catching}
+                >
+                    {catching ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                        <View style={{alignItems: 'center'}}>
+                            <Icon name="disc" size={18} color="#fff" />
+                            <Text style={styles.smallBtnText}>Quick</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
+
+                {/* 2. AR Mode Button */}
+                <TouchableOpacity 
+                    style={[styles.pillButton, styles.blueBtn]} 
+                    onPress={handleEnterAR}
+                    disabled={catching}
+                >
+                    <View style={{alignItems: 'center'}}>
+                        <Icon name="camera" size={18} color="#fff" />
+                        <Text style={styles.smallBtnText}>AR Mode</Text>
+                    </View>
+                </TouchableOpacity>
+            </View>
           ) : (
-            <TouchableOpacity style={[styles.pillButton, styles.redBtn]} onPress={handleScanForPokemon}>
+            <TouchableOpacity style={[styles.pillButton, styles.redBtn, {marginLeft: 15}]} onPress={handleScanForPokemon}>
               <Icon name="radio" size={20} color="#fff" style={{ marginRight: 8 }} />
               <Text style={styles.btnText}>SCAN AREA</Text>
             </TouchableOpacity>
@@ -373,9 +417,22 @@ const styles = StyleSheet.create({
   distanceText: { fontSize: 12, color: '#CC0000', fontWeight: 'bold', marginTop: 4 },
   buttonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   circleButton: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-  pillButton: { flex: 1, height: 50, marginLeft: 15, borderRadius: 25, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  
+  // Updated Button Styles
+  pillButton: { 
+    flex: 1, 
+    height: 50, 
+    borderRadius: 25, 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    elevation: 5 
+  },
   whiteBtn: { backgroundColor: 'white' },
   redBtn: { backgroundColor: '#CC0000' },
-  greenBtn: { backgroundColor: '#28a745' },
-  btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
+  greenBtn: { backgroundColor: '#28a745' }, // Green for Quick Catch
+  blueBtn: { backgroundColor: '#007bff' },  // Blue for AR Mode
+  
+  btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  smallBtnText: { color: 'white', fontWeight: 'bold', fontSize: 12, marginTop: 2 }
 });
