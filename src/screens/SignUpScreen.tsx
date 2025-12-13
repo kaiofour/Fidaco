@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -6,11 +6,27 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Alert, 
-  ActivityIndicator 
+  ActivityIndicator,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
+  Easing,
+  ScrollView
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import Icon from 'react-native-vector-icons/Feather';
+
+// --- BMO COLORS (Same as Login) ---
+const COLORS = {
+  BODY: "#639FAB",
+  SCREEN_BG: "#D6F8E8",
+  SCREEN_BORDER: "#4A7A85", 
+  BUTTON_RED: "#FF595E",
+  BUTTON_GREEN: "#8AC926",
+  DPAD: "#F4D35E",
+  TEXT_DARK: "#2A454B"
+};
 
 const SignUpScreen = ({ navigation }: any) => {
   const [username, setUsername] = useState('');
@@ -18,45 +34,58 @@ const SignUpScreen = ({ navigation }: any) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // --- ANIMATION: BLINKING EYES ---
+  const eyeScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let timeoutId: any;
+    const blink = () => {
+      Animated.sequence([
+        Animated.timing(eyeScale, { toValue: 0.1, duration: 150, useNativeDriver: true, easing: Easing.linear }),
+        Animated.timing(eyeScale, { toValue: 1, duration: 150, useNativeDriver: true, easing: Easing.linear }),
+      ]).start(() => {
+        const nextBlink = Math.random() * 4000 + 2000;
+        timeoutId = setTimeout(blink, nextBlink);
+      });
+    };
+    blink();
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   const handleSignUp = async () => {
     // 1. Basic Validation
     if (!email || !password || !username) {
-      Alert.alert('Error', 'Please fill in all fields.');
+      Alert.alert('BMO Says:', 'Please fill in all fields!');
       return;
     }
 
     setLoading(true);
 
     try {
-      // 2. Create User in Firebase Authentication
+      // 2. Create User in Firebase
       const userCredential = await auth().createUserWithEmailAndPassword(email, password);
       const uid = userCredential.user.uid;
 
-      // 3. Create User Profile in Firestore Database
-      // We use the same 'uid' so we can easily find their profile later
+      // 3. Create User Profile in Firestore
       await firestore().collection('users').doc(uid).set({
         username: username,
         email: email,
         pokedexCount: 0,
         joinDate: new Date().toDateString(),
-        // We initialize an empty array for their pokemon
         pokedex: [] 
       });
 
-      Alert.alert('Success', 'Account created!', [
-        { text: 'OK', onPress: () => navigation.replace('MainTabs') }
+      Alert.alert('Success', 'Account created! Welcome!', [
+        { text: 'Let\'s Go!', onPress: () => navigation.replace('MainTabs') }
       ]);
 
     } catch (error: any) {
-      // Handle Errors (e.g., email already in use)
+      console.log(error);
       let errorMessage = 'Something went wrong';
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'That email address is already in use!';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'That email address is invalid!';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Password should be at least 6 characters.';
-      }
+      if (error.code === 'auth/email-already-in-use') errorMessage = 'That email is taken!';
+      else if (error.code === 'auth/invalid-email') errorMessage = 'That email looks fake!';
+      else if (error.code === 'auth/weak-password') errorMessage = 'Password too short (min 6 chars).';
+      
       Alert.alert('Sign Up Failed', errorMessage);
     } finally {
       setLoading(false);
@@ -64,129 +93,166 @@ const SignUpScreen = ({ navigation }: any) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create Account</Text>
-      <Text style={styles.subtitle}>Start your Pokémon journey!</Text>
-
-      {/* Username Input */}
-      <View style={styles.inputContainer}>
-        <Icon name="user" size={20} color="#666" style={styles.icon} />
-        <TextInput
-          placeholder="Trainer Name"
-          style={styles.input}
-          value={username}
-          onChangeText={setUsername}
-        />
-      </View>
-
-      {/* Email Input */}
-      <View style={styles.inputContainer}>
-        <Icon name="mail" size={20} color="#666" style={styles.icon} />
-        <TextInput
-          placeholder="Email"
-          style={styles.input}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
-        />
-      </View>
-
-      {/* Password Input */}
-      <View style={styles.inputContainer}>
-        <Icon name="lock" size={20} color="#666" style={styles.icon} />
-        <TextInput
-          placeholder="Password"
-          style={styles.input}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-      </View>
-
-      <TouchableOpacity 
-        style={styles.button} 
-        onPress={handleSignUp}
-        disabled={loading}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{flex: 1}}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Sign Up</Text>
-        )}
-      </TouchableOpacity>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.bodyContainer}>
+            
+            {/* --- MONITOR SECTION --- */}
+            <View style={styles.monitorContainer}>
+              <View style={styles.screen}>
+                
+                {/* FACE (Smaller to fit inputs) */}
+                <View style={styles.faceContainer}>
+                  <View style={styles.eyesRow}>
+                    <Animated.View style={[styles.eye, { transform: [{ scaleY: eyeScale }] }]} />
+                    <Animated.View style={[styles.eye, { transform: [{ scaleY: eyeScale }] }]} />
+                  </View>
+                  {/* Happy Smile for Sign Up */}
+                  <View style={styles.mouth} /> 
+                </View>
 
-      <TouchableOpacity onPress={() => navigation.navigate('SignIn')}>
-        <Text style={styles.linkText}>Already have an account? <Text style={styles.bold}>Log In</Text></Text>
-      </TouchableOpacity>
-    </View>
+                {/* INPUTS */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>TRAINER NAME</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ash Ketchum"
+                    placeholderTextColor="rgba(42, 69, 75, 0.5)"
+                    value={username}
+                    onChangeText={setUsername}
+                  />
+
+                  <Text style={styles.label}>EMAIL</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="pika@chu.com"
+                    placeholderTextColor="rgba(42, 69, 75, 0.5)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+
+                  <Text style={styles.label}>PASSWORD</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="••••••"
+                    placeholderTextColor="rgba(42, 69, 75, 0.5)"
+                    secureTextEntry
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* --- CONTROLS SECTION --- */}
+            <View style={styles.controlsContainer}>
+              
+              {/* D-PAD (Decoration) */}
+              <View style={styles.dpadContainer}>
+                <View style={styles.dpadVertical} />
+                <View style={styles.dpadHorizontal} />
+                <View style={styles.dpadCenter} />
+              </View>
+
+              {/* BUTTONS */}
+              <View style={styles.actionsContainer}>
+                
+                {/* BIG RED -> SIGN UP (ACTION) */}
+                <TouchableOpacity 
+                  style={[styles.bigButton, styles.redBtn]} 
+                  onPress={handleSignUp}
+                  disabled={loading}
+                >
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>OK</Text>}
+                </TouchableOpacity>
+
+                {/* SMALL GREEN -> BACK (CANCEL) */}
+                <TouchableOpacity 
+                  style={[styles.smallButton, styles.greenBtn]} 
+                  onPress={() => navigation.navigate('SignIn')}
+                >
+                  <Text style={styles.smallBtnText}>BACK</Text>
+                </TouchableOpacity>
+
+              </View>
+            </View>
+
+             {/* SLOTS */}
+            <View style={styles.slotsRow}>
+               <View style={styles.slot} />
+               <View style={styles.slot} />
+            </View>
+
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
+  container: { flex: 1, backgroundColor: COLORS.BODY },
+  scrollContent: { flexGrow: 1 },
+  bodyContainer: { flex: 1, padding: 20, justifyContent: 'space-between' },
+
+  // SCREEN
+  monitorContainer: { backgroundColor: COLORS.BODY, padding: 15, borderRadius: 20, elevation: 10, marginBottom: 10 },
+  screen: { 
+    backgroundColor: COLORS.SCREEN_BG, 
+    borderRadius: 15, 
+    padding: 20, 
+    height: 450, // Taller for 3 inputs
+    borderWidth: 4, 
+    borderColor: COLORS.SCREEN_BORDER, 
+    justifyContent: 'flex-start' 
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
+
+  // FACE
+  faceContainer: { alignItems: 'center', marginBottom: 20 },
+  eyesRow: { flexDirection: 'row', justifyContent: 'space-between', width: 80, marginBottom: 10 },
+  eye: { width: 15, height: 15, backgroundColor: COLORS.TEXT_DARK, borderRadius: 8 },
+  mouth: { 
+    width: 40, height: 20, 
+    borderBottomWidth: 3, borderColor: COLORS.TEXT_DARK, borderRadius: 20 // Smile
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#888',
-    marginBottom: 40,
+
+  // INPUTS
+  inputGroup: { flex: 1, justifyContent: 'center' },
+  label: { 
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', 
+    color: COLORS.TEXT_DARK, fontWeight: 'bold', marginBottom: 2, marginLeft: 4, fontSize: 10, letterSpacing: 1 
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 55,
-    backgroundColor: '#FAFAFA',
+  input: { 
+    backgroundColor: 'rgba(255,255,255,0.4)', 
+    borderWidth: 2, borderColor: COLORS.TEXT_DARK, borderRadius: 10, 
+    paddingHorizontal: 15, height: 45, marginBottom: 10, 
+    color: COLORS.TEXT_DARK, fontSize: 14, fontWeight: 'bold' 
   },
-  icon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-  },
-  button: {
-    backgroundColor: '#FF5733',
-    height: 55,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-    shadowColor: '#FF5733',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  linkText: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 15,
-  },
-  bold: {
-    fontWeight: 'bold',
-    color: '#FF5733',
-  },
+
+  // CONTROLS
+  controlsContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, height: 120 },
+  dpadContainer: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center' },
+  dpadVertical: { position: 'absolute', width: 25, height: 75, backgroundColor: COLORS.DPAD, borderRadius: 5, elevation: 4 },
+  dpadHorizontal: { position: 'absolute', width: 75, height: 25, backgroundColor: COLORS.DPAD, borderRadius: 5, elevation: 4 },
+  dpadCenter: { position: 'absolute', width: 15, height: 15, backgroundColor: '#E5C240', borderRadius: 2 },
+
+  actionsContainer: { justifyContent: 'center', alignItems: 'center', gap: 10 },
+  bigButton: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 6, borderBottomWidth: 4, borderBottomColor: 'rgba(0,0,0,0.2)' },
+  redBtn: { backgroundColor: COLORS.BUTTON_RED },
+  greenBtn: { backgroundColor: COLORS.BUTTON_GREEN },
+  smallButton: { width: 50, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', elevation: 4, marginTop: 5, borderBottomWidth: 3, borderBottomColor: 'rgba(0,0,0,0.2)' },
+  
+  btnText: { color: '#fff', fontWeight: '900', fontSize: 18 },
+  smallBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 10 },
+
+  slotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginBottom: 10 },
+  slot: { width: 60, height: 15, backgroundColor: '#4A7A85', borderRadius: 10 }
 });
 
 export default SignUpScreen;

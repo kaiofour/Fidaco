@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -6,51 +6,80 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
+  Animated,
+  Easing,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform
 } from "react-native";
-import Icon from "react-native-vector-icons/Feather";
-import auth from '@react-native-firebase/auth'; // Import Firebase Auth
+import auth from '@react-native-firebase/auth';
+
+// --- BMO COLORS ---
+const COLORS = {
+  BODY: "#639FAB",
+  SCREEN_BG: "#D6F8E8",
+  SCREEN_BORDER: "#4A7A85", 
+  BUTTON_RED: "#FF595E",
+  BUTTON_GREEN: "#8AC926",
+  DPAD: "#F4D35E",
+  TEXT_DARK: "#2A454B"
+};
 
 const SignInScreen = ({ navigation }: any) => {
+  // 1. HOOKS (Must be at the top)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Animation Hook
+  const eyeScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let timeoutId: any;
+
+    const blink = () => {
+      Animated.sequence([
+        Animated.timing(eyeScale, {
+          toValue: 0.1,
+          duration: 150,
+          useNativeDriver: true,
+          easing: Easing.linear,
+        }),
+        Animated.timing(eyeScale, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+          easing: Easing.linear,
+        }),
+      ]).start(() => {
+        const nextBlink = Math.random() * 4000 + 2000;
+        timeoutId = setTimeout(blink, nextBlink);
+      });
+    };
+
+    blink();
+
+    // Cleanup to prevent memory leaks if you leave the screen
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   const handleLogin = async () => {
-    // 1. Basic Validation
     if (!email || !password) {
-      Alert.alert("Error", "Please enter both email and password.");
+      Alert.alert("BMO Says:", "Please enter your email and password!");
       return;
     }
 
     setLoading(true);
-
     try {
-      // 2. Sign In with Firebase
       await auth().signInWithEmailAndPassword(email, password);
-      
-      // 3. Navigate to Main App (Reset stack so they can't go back to login)
       navigation.reset({
         index: 0,
         routes: [{ name: 'MainTabs' }],
       });
-
     } catch (error: any) {
       console.log(error);
-      let errorMessage = "Invalid email or password";
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = "No user found with this email.";
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = "Incorrect password.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = "That email address is invalid.";
-      }
-
-      Alert.alert("Login Failed", errorMessage);
+      Alert.alert("Login Failed", "Check your email and password!");
     } finally {
       setLoading(false);
     }
@@ -58,154 +87,121 @@ const SignInScreen = ({ navigation }: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{flex: 1}}
       >
-        <View style={styles.centerBox}>
-          {/* Title */}
-          <Text style={styles.title}>
-            Sign in with your email
-          </Text>
+        <View style={styles.bodyContainer}>
+          
+          {/* --- BMO'S FACE --- */}
+          <View style={styles.monitorContainer}>
+            <View style={styles.screen}>
+              
+              {/* FACE */}
+              <View style={styles.faceContainer}>
+                <View style={styles.eyesRow}>
+                  <Animated.View style={[styles.eye, { transform: [{ scaleY: eyeScale }] }]} />
+                  <Animated.View style={[styles.eye, { transform: [{ scaleY: eyeScale }] }]} />
+                </View>
+                <View style={styles.mouth} />
+              </View>
 
-          {/* Email Input */}
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#777"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
+              {/* INPUTS */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>EMAIL</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="adventure@time.ooo"
+                  placeholderTextColor="rgba(42, 69, 75, 0.5)"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
 
-          {/* Password Input */}
-          <View style={styles.passwordContainer}>
-            <TextInput
-              style={styles.passwordInput}
-              placeholder="Enter Your Password"
-              placeholderTextColor="#777"
-              secureTextEntry={!passwordVisible}
-              value={password}
-              onChangeText={setPassword}
-            />
-            <TouchableOpacity
-              onPress={() => setPasswordVisible(!passwordVisible)}
-            >
-              <Icon
-                name={passwordVisible ? "eye" : "eye-off"}
-                size={20}
-                color="#777"
-              />
-            </TouchableOpacity>
+                <Text style={styles.label}>PASSWORD</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••"
+                  placeholderTextColor="rgba(42, 69, 75, 0.5)"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+              </View>
+            </View>
           </View>
 
-          {/* Login Button */}
-          <TouchableOpacity 
-            style={styles.signUpButton} 
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.signUpText}>Login</Text>
-            )}
-          </TouchableOpacity>
+          {/* --- CONTROLS --- */}
+          <View style={styles.controlsContainer}>
+            {/* D-PAD */}
+            <View style={styles.dpadContainer}>
+              <View style={styles.dpadVertical} />
+              <View style={styles.dpadHorizontal} />
+              <View style={styles.dpadCenter} />
+            </View>
 
-          <Text style={styles.orText}>or</Text>
+            {/* BUTTONS */}
+            <View style={styles.actionsContainer}>
+              <TouchableOpacity 
+                style={[styles.bigButton, styles.redBtn]} 
+                onPress={handleLogin}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>GO</Text>}
+              </TouchableOpacity>
 
-          {/* Bottom link */}
-          <View style={styles.bottomRow}>
-            <Text>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-              <Text style={styles.signUpLink}>Sign Up</Text>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.smallButton, styles.greenBtn]} 
+                onPress={() => navigation.navigate('SignUp')}
+              >
+                <Text style={styles.smallBtnText}>NEW</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* SLOTS */}
+          <View style={styles.slotsRow}>
+             <View style={styles.slot} />
+             <View style={styles.slot} />
+          </View>
+
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  centerBox: {
-    width: "100%",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 30,
-    color: "#333",
-  },
-  input: {
-    width: "100%",
-    height: 50,
-    borderColor: "#ddd",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    marginBottom: 15,
-    color: "#333",
-    backgroundColor: "#FAFAFA",
-  },
-  passwordContainer: {
-    width: "100%",
-    height: 50,
-    borderColor: "#ddd",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    backgroundColor: "#FAFAFA",
-  },
-  passwordInput: {
-    flex: 1,
-    color: "#333",
-  },
-  signUpButton: {
-    width: "100%",
-    height: 50,
-    backgroundColor: "#FF5733",
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#FF5733",
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
-  signUpText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  orText: {
-    marginVertical: 20,
-    color: "#aaa",
-  },
-  bottomRow: {
-    flexDirection: "row",
-    marginTop: 10,
-  },
-  signUpLink: {
-    color: "#FF5733",
-    fontWeight: "bold",
-    marginLeft: 5,
-  },
+  container: { flex: 1, backgroundColor: COLORS.BODY },
+  bodyContainer: { flex: 1, padding: 20, justifyContent: 'space-between' },
+  monitorContainer: { backgroundColor: COLORS.BODY, padding: 15, borderRadius: 20, elevation: 10, marginBottom: 20 },
+  screen: { backgroundColor: COLORS.SCREEN_BG, borderRadius: 15, padding: 20, height: 380, borderWidth: 4, borderColor: COLORS.SCREEN_BORDER, justifyContent: 'space-between' },
+  
+  faceContainer: { alignItems: 'center', marginTop: 20 },
+  eyesRow: { flexDirection: 'row', justifyContent: 'space-between', width: 120, marginBottom: 15 },
+  eye: { width: 25, height: 25, backgroundColor: COLORS.TEXT_DARK, borderRadius: 12.5 },
+  mouth: { width: 60, height: 25, borderBottomWidth: 4, borderColor: COLORS.TEXT_DARK, borderRadius: 30, marginTop: -10 },
+
+  inputGroup: { marginBottom: 10 },
+  label: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', color: COLORS.TEXT_DARK, fontWeight: 'bold', marginBottom: 4, fontSize: 12, letterSpacing: 1 },
+  input: { backgroundColor: 'rgba(255,255,255,0.4)', borderWidth: 2, borderColor: COLORS.TEXT_DARK, borderRadius: 10, paddingHorizontal: 15, height: 50, marginBottom: 15, color: COLORS.TEXT_DARK, fontSize: 16, fontWeight: 'bold' },
+
+  controlsContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, height: 150 },
+  dpadContainer: { width: 100, height: 100, justifyContent: 'center', alignItems: 'center' },
+  dpadVertical: { position: 'absolute', width: 30, height: 90, backgroundColor: COLORS.DPAD, borderRadius: 5, elevation: 4 },
+  dpadHorizontal: { position: 'absolute', width: 90, height: 30, backgroundColor: COLORS.DPAD, borderRadius: 5, elevation: 4 },
+  dpadCenter: { position: 'absolute', width: 20, height: 20, backgroundColor: '#E5C240', borderRadius: 2 },
+
+  actionsContainer: { justifyContent: 'center', alignItems: 'center', gap: 15 },
+  bigButton: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', elevation: 6, borderBottomWidth: 4, borderBottomColor: 'rgba(0,0,0,0.2)' },
+  redBtn: { backgroundColor: COLORS.BUTTON_RED },
+  greenBtn: { backgroundColor: COLORS.BUTTON_GREEN },
+  smallButton: { width: 50, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', elevation: 4, marginTop: 10, borderBottomWidth: 3, borderBottomColor: 'rgba(0,0,0,0.2)' },
+  
+  btnText: { color: '#fff', fontWeight: '900', fontSize: 20 },
+  smallBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 10 },
+  slotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginTop: 20, marginBottom: 10 },
+  slot: { width: 60, height: 15, backgroundColor: '#4A7A85', borderRadius: 10 }
 });
 
 export default SignInScreen;
