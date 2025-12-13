@@ -102,10 +102,4 @@ npm run ios
 └── tsconfig.json       # TypeScript configuration
 ```
 
-## Contributing
 
-Contributions are welcome! Please feel free to open issues or submit pull requests.
-
-## License
-
-(Specify your project's license here, e.g., MIT, Apache 2.0, etc.)
